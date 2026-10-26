@@ -7,6 +7,7 @@ load_dotenv()
 def _require_env(key: str) -> str:
     value = os.getenv(key)
     if not value:
+        print(f"❌ CRITICAL CONFIG ERROR: Missing required environment variable '{key}' in environment!", flush=True)
         raise RuntimeError(f"CRITICAL: Missing required environment variable '{key}' in .env")
     return value
 

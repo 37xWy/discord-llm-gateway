@@ -1,9 +1,14 @@
 import asyncio
+import os
 import time
 import warnings
 from typing import Dict, Any, List, Tuple, Optional
 import httpx
+
+# Prevent LiteLLM from making slow/blocking network calls to GitHub for model prices at import time
+os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 import litellm
+
 from src.config import DEMO_GEMINI_API_KEY, DEFAULT_DEMO_MODEL, MAX_OUTPUT_TOKENS, DEFAULT_SYSTEM_PROMPT
 from src.security import decrypt_api_key
 from src.db import (
@@ -14,10 +19,8 @@ from src.db import (
     fetch_referenced_users_context,
 )
 
-# Configure IPv4 transport directly on the httpx AsyncClient for LiteLLM
-transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+# Persistent AsyncClient for LiteLLM so TLS handshakes stay warm
 litellm.aclient_session = httpx.AsyncClient(
-    transport=transport,
     timeout=httpx.Timeout(20.0, connect=5.0),
     limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
 )
@@ -119,7 +122,7 @@ async def _post_reply_persistence_and_compression(
                     message_ids,
                 )
     except Exception as e:
-        print(f"[Background Memory Task Warning] {context_key}: {e}")
+        print(f"[Background Memory Task Warning] {context_key}: {e}", flush=True)
 
 
 async def generate_chat_reply(
@@ -138,7 +141,7 @@ async def generate_chat_reply(
     # 1. Fetch current memory state
     memory = await asyncio.to_thread(fetch_conversation_context, context_key)
     t_db = time.perf_counter()
-    print(f"[TIMING] 1. Supabase context fetch: {t_db - t0:.2f}s")
+    print(f"[TIMING] 1. Supabase context fetch: {t_db - t0:.2f}s", flush=True)
 
     summary_text: str = memory["summary"]
     history_rows: List[Dict[str, Any]] = memory["messages"]
@@ -198,11 +201,11 @@ async def generate_chat_reply(
     completion_kwargs = _build_completion_kwargs(model_name, api_key, user_config)
     completion_kwargs["messages"] = llm_messages
 
-    print(f"[TIMING] 2. Calling LiteLLM ({model_name})...")
+    print(f"[TIMING] 2. Calling LiteLLM ({model_name})...", flush=True)
     t_llm_start = time.perf_counter()
     response = await litellm.acompletion(**completion_kwargs)
     t_llm_end = time.perf_counter()
-    print(f"[TIMING] 3. LiteLLM response received: {t_llm_end - t_llm_start:.2f}s")
+    print(f"[TIMING] 3. LiteLLM response received: {t_llm_end - t_llm_start:.2f}s", flush=True)
 
     reply_text = response.choices[0].message.content or "(Empty response)"
 
