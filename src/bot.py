@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from typing import Literal, Optional, List, Tuple
 import discord
 from discord import app_commands
@@ -199,7 +200,9 @@ async def delete_my_data_cmd(interaction: discord.Interaction):
 
 def _chunk_text(text: str, limit: int = 1950):
     """Splits long LLM replies so they never exceed Discord's 2000-character message limit."""
-    return [text[i : i + limit] for i in range(0, len(text), limit)] or ["(Empty response)"]
+    chunks = [text[i : i + limit] for i in range(0, len(text), limit)] or ["(Empty response)"]
+    print(f"[REPLY] Chunked message into {len(chunks)} part(s) (total chars: {len(text)})", flush=True)
+    return chunks
 
 
 @bot.event
@@ -305,10 +308,13 @@ async def on_message(message: discord.Message):
         )
         return
 
-    # 9. Fetch User Config & Generate LLM Response
+    # 9. Fetch User Config & Generate LLM Response with Deep Diagnostics
     async with message.channel.typing():
         try:
+            print(f"[LLM] Fetching user config for {user_id}...", flush=True)
             user_cfg = await asyncio.to_thread(get_user_config, user_id)
+            print(f"[LLM] Generating reply for {message.author} (prompt length: {len(clean_prompt)} chars)...", flush=True)
+
             reply_text = await generate_chat_reply(
                 user_config=user_cfg,
                 discord_user_id=user_id,
@@ -318,6 +324,7 @@ async def on_message(message: discord.Message):
                 reply_context=reply_context,
                 referenced_users=referenced_users,
             )
+            print(f"[LLM] Reply generated successfully ({len(reply_text)} chars). Sending to Discord...", flush=True)
 
             # Append subtle quota footer if user is on Demo Passcode mode
             remaining = gate.get("remaining_demo_uses", -1)
@@ -330,10 +337,16 @@ async def on_message(message: discord.Message):
                     mention_author=False,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
+            print(f"[REPLY] Finished sending reply chunks to {message.author}", flush=True)
 
         except Exception as e:
-            await message.reply(
-                f"⚠️ **LLM Error:** `{str(e)[:300]}`",
-                mention_author=False,
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
+            print(f"[CRITICAL ERROR] Failed to process message for {message.author}: {e}", flush=True)
+            traceback.print_exc()
+            try:
+                await message.reply(
+                    "⚠️ An internal error occurred while generating your response. Please try again later.",
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except Exception:
+                pass
