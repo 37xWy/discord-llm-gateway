@@ -1,5 +1,4 @@
 import asyncio
-import socket
 import time
 import warnings
 from typing import Dict, Any, List, Tuple, Optional
@@ -15,14 +14,10 @@ from src.db import (
     fetch_referenced_users_context,
 )
 
-# 1. Force IPv4 DNS resolution on Windows so httpx/Supabase never hang on dead IPv6 routes
-_orig_getaddrinfo = socket.getaddrinfo
-def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
-socket.getaddrinfo = _ipv4_only_getaddrinfo
-
-# 2. Reuse a persistent IPv4 AsyncClient for LiteLLM so TLS handshakes stay warm
+# Configure IPv4 transport directly on the httpx AsyncClient for LiteLLM
+transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
 litellm.aclient_session = httpx.AsyncClient(
+    transport=transport,
     timeout=httpx.Timeout(20.0, connect=5.0),
     limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
 )

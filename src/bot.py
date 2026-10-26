@@ -86,10 +86,10 @@ class GatewayBot(commands.Bot):
     async def setup_hook(self):
         # Sync global slash commands on startup
         await self.tree.sync()
-        print("Slash commands synced globally.")
+        print("Slash commands synced globally.", flush=True)
 
     async def on_ready(self):
-        print(f"Logged in as {self.user} (ID: {self.user.id})")
+        print(f"Logged in as {self.user} (ID: {self.user.id})", flush=True)
 
 
 bot = GatewayBot()
@@ -288,10 +288,10 @@ async def on_message(message: discord.Message):
     # 8. Check Rate Limit + Demo Quota via Atomic Supabase RPC
     import time
     t_gate_start = time.perf_counter()
-    print(f"\n[MSG RECEIVED] From {message.author} -> Checking Supabase quota...")
+    print(f"\n[MSG RECEIVED] From {message.author} -> Checking Supabase quota...", flush=True)
 
     gate = await asyncio.to_thread(check_rate_limit_and_quota, user_id, 4)
-    print(f"[TIMING] 0. Supabase quota RPC: {time.perf_counter() - t_gate_start:.2f}s")
+    print(f"[TIMING] 0. Supabase quota RPC: {time.perf_counter() - t_gate_start:.2f}s", flush=True)
 
     if not gate.get("allowed"):
         reason_str = str(gate.get("reason", ""))
