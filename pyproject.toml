@@ -1,0 +1,13 @@
+[project]
+name = "discord-llm-gateway"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=50.0.2",
+    "discord-py>=2.7.1",
+    "fastapi>=0.162.0",
+    "litellm>=1.106.3",
+    "python-dotenv>=1.2.4",
+    "supabase>=2.33.0",
+    "uvicorn>=0.54.0",
+]
