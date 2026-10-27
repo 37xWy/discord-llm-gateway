@@ -20,6 +20,16 @@ DEMO_GEMINI_API_KEY = _require_env("DEMO_GEMINI_API_KEY")
 # Default fallback model for Demo users
 DEFAULT_DEMO_MODEL = os.getenv("DEFAULT_DEMO_MODEL", "gemini/gemini-3.8-flash")
 
+# Fallback chain for Demo & Gemini users when experiencing 503/429/overloaded/timeouts
+FALLBACK_DEMO_MODELS = [
+    m.strip()
+    for m in os.getenv(
+        "FALLBACK_DEMO_MODELS",
+        "gemini/gemini-2.5-flash,gemini/gemini-3.1-flash-lite,gemini/gemini-2.5-flash-lite",
+    ).split(",")
+    if m.strip()
+]
+
 # Guardrails & Token Limits
 MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "800"))
 MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", "300"))

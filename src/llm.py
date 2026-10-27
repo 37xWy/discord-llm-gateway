@@ -9,7 +9,13 @@ import httpx
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 import litellm
 
-from src.config import DEMO_GEMINI_API_KEY, DEFAULT_DEMO_MODEL, MAX_OUTPUT_TOKENS, DEFAULT_SYSTEM_PROMPT
+from src.config import (
+    DEMO_GEMINI_API_KEY,
+    DEFAULT_DEMO_MODEL,
+    FALLBACK_DEMO_MODELS,
+    MAX_OUTPUT_TOKENS,
+    DEFAULT_SYSTEM_PROMPT,
+)
 from src.security import decrypt_api_key
 from src.db import (
     get_context_key,
@@ -62,16 +68,17 @@ def _build_completion_kwargs(model_name: str, api_key: str, user_config: Dict[st
         "model": model_name,
         "api_key": api_key,
         "num_retries": 1,
-        "timeout": 25,
+        "timeout": 20,
         "max_tokens": MAX_OUTPUT_TOKENS,
     }
     lower_model = model_name.lower()
 
     if "gemini" in lower_model:
-        if "gemini-3" in lower_model:
-            kwargs["reasoning_effort"] = "minimal"
-        else:
+        # Avoid reasoning_effort="minimal" on gemini-3 as it forces /v1alpha/ with heavy 503s
+        if "gemini-2.5" in lower_model:
             kwargs["thinking"] = {"type": "disabled", "budget_tokens": 0}
+            kwargs["temperature"] = float(user_config.get("temperature", 0.7))
+        else:
             kwargs["temperature"] = float(user_config.get("temperature", 0.7))
     else:
         kwargs["temperature"] = float(user_config.get("temperature", 0.7))
@@ -121,21 +128,40 @@ async def _post_reply_persistence_and_compression(
                     f"<untrusted_transcript>\n{transcript}\n</untrusted_transcript>"
                 )
 
-                comp_kwargs = _build_completion_kwargs(model_name, api_key, {})
-                comp_kwargs["messages"] = [{"role": "user", "content": compression_prompt}]
-                comp_kwargs["max_tokens"] = 250
+                comp_candidates = [model_name]
+                if "gemini" in model_name.lower():
+                    for fb in FALLBACK_DEMO_MODELS:
+                        if fb not in comp_candidates:
+                            comp_candidates.append(fb)
 
-                response = await litellm.acompletion(**comp_kwargs)
-                new_summary = response.choices[0].message.content.strip()
-                message_ids = [m["id"] for m in oldest_chunk]
+                comp_response = None
+                for c_idx, candidate in enumerate(comp_candidates):
+                    try:
+                        if c_idx > 0:
+                            print(f"[COMPRESSION FALLBACK] Trying fallback #{c_idx}: {candidate}...", flush=True)
+                        comp_kwargs = _build_completion_kwargs(candidate, api_key, {})
+                        comp_kwargs["messages"] = [{"role": "user", "content": compression_prompt}]
+                        comp_kwargs["max_tokens"] = 250
+                        comp_response = await litellm.acompletion(**comp_kwargs)
+                        break
+                    except Exception as ce:
+                        err_str = str(ce).lower()
+                        if any(code in err_str for code in ("503", "unavailable", "high demand", "overloaded", "429", "rate", "timeout", "timed out", "404", "not found")):
+                            print(f"[COMPRESSION WARN] Model {candidate} failed ({type(ce).__name__}: {str(ce)[:120]}).", flush=True)
+                            continue
+                        raise
 
-                await asyncio.to_thread(
-                    commit_compression,
-                    context_key,
-                    discord_user_id,
-                    new_summary,
-                    message_ids,
-                )
+                if comp_response:
+                    new_summary = comp_response.choices[0].message.content.strip()
+                    message_ids = [m["id"] for m in oldest_chunk]
+
+                    await asyncio.to_thread(
+                        commit_compression,
+                        context_key,
+                        discord_user_id,
+                        new_summary,
+                        message_ids,
+                    )
     except Exception as e:
         print(f"[Background Memory Task Warning] {context_key}: {e}", flush=True)
 
@@ -206,15 +232,39 @@ async def generate_chat_reply(
 
     llm_messages.append({"role": "user", "content": final_user_content})
 
-    # 5. Call LLM
-    completion_kwargs = _build_completion_kwargs(model_name, api_key, user_config)
-    completion_kwargs["messages"] = llm_messages
+    # 5. Call LLM with automatic multi-model fallback chain
+    candidate_models = [model_name]
+    if user_config.get("access_mode") == "demo" or "gemini" in model_name.lower():
+        for fb in FALLBACK_DEMO_MODELS:
+            if fb not in candidate_models:
+                candidate_models.append(fb)
 
-    print(f"[TIMING] 2. Calling LiteLLM ({model_name})...", flush=True)
-    t_llm_start = time.perf_counter()
-    response = await litellm.acompletion(**completion_kwargs)
-    t_llm_end = time.perf_counter()
-    print(f"[TIMING] 3. LiteLLM response received: {t_llm_end - t_llm_start:.2f}s", flush=True)
+    response = None
+    last_error = None
+    for idx, candidate_model in enumerate(candidate_models):
+        try:
+            if idx > 0:
+                print(f"[LLM FALLBACK] Primary model overloaded/timed out. Trying fallback #{idx}: {candidate_model}...", flush=True)
+            completion_kwargs = _build_completion_kwargs(candidate_model, api_key, user_config)
+            completion_kwargs["messages"] = llm_messages
+            print(f"[TIMING] 2. Calling LiteLLM ({candidate_model})...", flush=True)
+            t_llm_start = time.perf_counter()
+            response = await litellm.acompletion(**completion_kwargs)
+            t_llm_end = time.perf_counter()
+            print(f"[TIMING] 3. LiteLLM ({candidate_model}) response received: {t_llm_end - t_llm_start:.2f}s", flush=True)
+            model_name = candidate_model  # update model_name to the successful one for persistence
+            break
+        except Exception as e:
+            last_error = e
+            err_str = str(e).lower()
+            # Retry on next model if 503, 429, unavailable, overloaded, timeout, or not found (404)
+            if any(code in err_str for code in ("503", "unavailable", "high demand", "overloaded", "429", "rate", "timeout", "timed out", "404", "not found")):
+                print(f"[LLM WARN] Model {candidate_model} failed ({type(e).__name__}: {str(e)[:120]}).", flush=True)
+                continue
+            raise
+
+    if response is None:
+        raise last_error
 
     reply_text = response.choices[0].message.content or "(Empty response)"
 
