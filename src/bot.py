@@ -19,6 +19,15 @@ from src.db import (
 from src.llm import generate_chat_reply
 
 
+# Reusable allowed mentions: Allow user mentions and reply highlights while blocking @everyone and @roles
+SAFE_MENTIONS = discord.AllowedMentions(
+    everyone=False,
+    roles=False,
+    users=True,
+    replied_user=True,
+)
+
+
 # ============================================================================
 # 1. SECURE POP-UP MODALS (For Passcodes & BYOK API Keys)
 # ============================================================================
@@ -82,7 +91,7 @@ class GatewayBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True  # Required to read chat messages
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(command_prefix="!", intents=intents, allowed_mentions=SAFE_MENTIONS)
 
     async def setup_hook(self):
         # Sync global slash commands on startup
@@ -234,8 +243,7 @@ async def on_message(message: discord.Message):
     if message.attachments:
         await message.reply(
             "📎 File and media attachments are disabled to conserve tokens. Please send plain text only.",
-            mention_author=False,
-            allowed_mentions=discord.AllowedMentions.none(),
+            allowed_mentions=SAFE_MENTIONS,
         )
         return
 
@@ -261,8 +269,7 @@ async def on_message(message: discord.Message):
     if not clean_prompt:
         await message.reply(
             "👋 Hi! Use `/unlock` (demo passcode) or `/setup_key` (bring your own API key) to configure me, then ask me anything!",
-            mention_author=False,
-            allowed_mentions=discord.AllowedMentions.none(),
+            allowed_mentions=SAFE_MENTIONS,
         )
         return
 
@@ -270,8 +277,7 @@ async def on_message(message: discord.Message):
     if len(clean_prompt) > MAX_PROMPT_CHARS:
         await message.reply(
             f"⚠️ Prompt too long ({len(clean_prompt)}/{MAX_PROMPT_CHARS} chars). Please keep messages concise.",
-            mention_author=False,
-            allowed_mentions=discord.AllowedMentions.none(),
+            allowed_mentions=SAFE_MENTIONS,
         )
         return
 
@@ -303,8 +309,7 @@ async def on_message(message: discord.Message):
             return
         await message.reply(
             f"🔒 {reason_str}",
-            mention_author=False,
-            allowed_mentions=discord.AllowedMentions.none(),
+            allowed_mentions=SAFE_MENTIONS,
         )
         return
 
@@ -334,8 +339,7 @@ async def on_message(message: discord.Message):
             for chunk in _chunk_text(reply_text):
                 await message.reply(
                     chunk,
-                    mention_author=False,
-                    allowed_mentions=discord.AllowedMentions.none(),
+                    allowed_mentions=SAFE_MENTIONS,
                 )
             print(f"[REPLY] Finished sending reply chunks to {message.author}", flush=True)
 
@@ -345,8 +349,7 @@ async def on_message(message: discord.Message):
             try:
                 await message.reply(
                     "⚠️ An internal error occurred while generating your response. Please try again later.",
-                    mention_author=False,
-                    allowed_mentions=discord.AllowedMentions.none(),
+                    allowed_mentions=SAFE_MENTIONS,
                 )
             except Exception:
                 pass
