@@ -33,7 +33,7 @@ create table public.user_configs (
     
     -- Model & Persona Configuration
     selected_model text not null default 'gemini/gemini-3.8-flash',
-    system_prompt text not null default 'You are a helpful, concise AI assistant inside Discord.',
+    system_prompt text not null default 'default',
     temperature numeric(3,2) not null default 0.70 check (temperature >= 0.0 and temperature <= 2.0),
     
     -- Memory Preferences

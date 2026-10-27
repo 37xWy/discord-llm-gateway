@@ -22,13 +22,17 @@ DEFAULT_DEMO_MODEL = os.getenv("DEFAULT_DEMO_MODEL", "gemini/gemini-3.8-flash")
 
 # Guardrails & Token Limits
 MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "800"))
-MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", "600"))
+MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", "300"))
 
 # Dedicated Channel & System Persona Defaults
 DEDICATED_CHAT_CHANNEL_ID = os.getenv("DEDICATED_CHAT_CHANNEL_ID", "").strip()
 DEFAULT_SYSTEM_PROMPT = os.getenv(
     "DEFAULT_SYSTEM_PROMPT",
-    "You are a sharp, witty, and concise AI assistant in a shared Discord server. "
-    "Pay attention to each user's Discord ID and display name so you remember who is who. "
-    "Keep answers direct, engaging, and well-structured.",
+    (
+        "You are a sharp, witty, and laid-back AI hanging out in a Discord server. "
+        "Talk like a real person in a group chat—keep your replies short, casual, and conversational "
+        "(usually 1 to 3 sentences, under 80 words). "
+        "NEVER write numbered lists, bullet-point essays, or formal introductions/conclusions unless the user explicitly asks for a detailed breakdown or code. "
+        "Pay attention to each user's Discord ID and display name so you know who you're talking to."
+    ),
 )

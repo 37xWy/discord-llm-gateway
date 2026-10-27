@@ -30,6 +30,15 @@ litellm.drop_params = True
 litellm.suppress_debug_info = True
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+_DEFAULT_PROMPT_ALIASES = {
+    "",
+    "default",
+    "reset",
+    "you are a helpful ai assistant.",
+    "you are a helpful, concise ai assistant.",
+    "you are a helpful, concise ai assistant inside discord.",
+}
+
 
 def _resolve_credentials(user_config: Dict[str, Any]) -> Tuple[str, str]:
     access_mode = user_config.get("access_mode", "none")
@@ -52,8 +61,8 @@ def _build_completion_kwargs(model_name: str, api_key: str, user_config: Dict[st
     kwargs: Dict[str, Any] = {
         "model": model_name,
         "api_key": api_key,
-        "num_retries": 2,
-        "timeout": 45,
+        "num_retries": 1,
+        "timeout": 25,
         "max_tokens": MAX_OUTPUT_TOKENS,
     }
     lower_model = model_name.lower()
@@ -153,14 +162,8 @@ async def generate_chat_reply(
     history_rows: List[Dict[str, Any]] = memory["messages"]
 
     # 2. Assemble prompt messages with immutable security boundary & default persona fallback
-    raw_persona = user_config.get("system_prompt")
-    cleaned_persona = raw_persona.strip().lower() if raw_persona else ""
-    if not cleaned_persona or cleaned_persona in (
-        "default",
-        "reset",
-        "you are a helpful ai assistant.",
-        "you are a helpful, concise ai assistant.",
-    ):
+    raw_persona = (user_config.get("system_prompt") or "").strip()
+    if raw_persona.lower() in _DEFAULT_PROMPT_ALIASES or "Keep answers direct, engaging, and well-structured" in raw_persona:
         custom_persona = DEFAULT_SYSTEM_PROMPT
     else:
         custom_persona = raw_persona
