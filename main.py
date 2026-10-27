@@ -44,6 +44,12 @@ async def _run_bot():
             print("[BOT] Bot runner task cancelled for shutdown.", flush=True)
             break
         except discord.HTTPException as e:
+            try:
+                if hasattr(bot, "http") and bot.http:
+                    await bot.http.close()
+            except Exception:
+                pass
+
             if e.status == 429:
                 retry_after = getattr(e, "retry_after", None)
                 wait_time = int(retry_after) if retry_after else backoff
@@ -65,6 +71,12 @@ async def _run_bot():
                 except asyncio.TimeoutError:
                     backoff = min(backoff * 2, max_backoff)
         except Exception as e:
+            try:
+                if hasattr(bot, "http") and bot.http:
+                    await bot.http.close()
+            except Exception:
+                pass
+
             bot_startup_error = f"{type(e).__name__}: {e}"
             print(f"[BOT CRASH] {bot_startup_error}", flush=True)
             traceback.print_exc()

@@ -19,10 +19,11 @@ from src.db import (
     fetch_referenced_users_context,
 )
 
-# Persistent AsyncClient for LiteLLM so TLS handshakes stay warm
+# Force LiteLLM to use standard httpx instead of buggy aiohttp_transport socket pooling
+litellm.disable_aiohttp_transport = True
 litellm.aclient_session = httpx.AsyncClient(
-    timeout=httpx.Timeout(20.0, connect=5.0),
-    limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+    timeout=httpx.Timeout(45.0, connect=10.0),
+    limits=httpx.Limits(max_keepalive_connections=5, max_connections=20, keepalive_expiry=30.0),
 )
 
 litellm.drop_params = True
@@ -51,14 +52,19 @@ def _build_completion_kwargs(model_name: str, api_key: str, user_config: Dict[st
     kwargs: Dict[str, Any] = {
         "model": model_name,
         "api_key": api_key,
-        "num_retries": 1,
-        "timeout": 20,
+        "num_retries": 2,
+        "timeout": 45,
         "max_tokens": MAX_OUTPUT_TOKENS,
     }
     lower_model = model_name.lower()
 
-    # Only pass temperature on non-Gemini-3 models to avoid deprecation warnings
-    if "gemini-3" not in lower_model:
+    if "gemini" in lower_model:
+        if "gemini-3" in lower_model:
+            kwargs["reasoning_effort"] = "minimal"
+        else:
+            kwargs["thinking"] = {"type": "disabled", "budget_tokens": 0}
+            kwargs["temperature"] = float(user_config.get("temperature", 0.7))
+    else:
         kwargs["temperature"] = float(user_config.get("temperature", 0.7))
 
     return kwargs
